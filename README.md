@@ -1,43 +1,77 @@
 # Cicada-Mastertul
+
 ## Description 
+
 The tool allows users to authenticate with a target domain using either usernames and passwords or NTLM hashes, and it provides a wide range of enumeration options to gather information about domain users, services, and vulnerabilities. It can also assist with cracking password hashes and extracting sensitive information for further exploitation.
 
-## Installation and Setup 
-To set up Impacket and use the tool, you'll need to run the following command. Note: If you have set up your Kali using Dewalt's pimpmykali (https://github.com/Dewalt-arch/pimpmykali), you don't need to run the setup script.
+## Modifications from original
 
-```markdown
-sudo python3 cicada-mastertul.py --setup
- ```
- 
-![image](https://github.com/user-attachments/assets/e703cf85-bf49-4fbd-be40-ba9dedbe30d2)
+- Removed setup function
+- Removed cracking function
+
+<br>
+
+- Instead of CrackMapExec use NetExec
+- Change some impacket scripts to use NetExec instead
+- Log commands
+
+<br>
+
+- `-d` flag can be domain or DC (if you're targeting DC with NetExec use that)
+- `-t` is optional if you're using `-d`
+- `-q` to not show banner and warning
+- `-k` allows using Kerberos flags in the commands
+  - `ldapdomaindump` doesn't allow Kerberos auth, used NetExec which looks kinda ugly..
+- Somewhat better logging~
+
+<br>
+
+- `get_NPUsers` and `get_UserSPNs` needs to be tested
+
+<br>
+
+> Note: Somewhat unstable~~
+
+## Installation and Setup on Kali
+
+```bash
+sudo apt install impacket-scripts
+sudo apt install faketime
+sudo apt install netexec
+```
+
+```bash
+pip install ntplib
+```
+
+```bash
+git clone -q https://github.com/xHacka/Cicada-Mastertul.git /opt
+chmod +x /opt/Cicada-Mastertul/cicada-mastertul.py
+ln -s /opt/Cicada-Mastertul/cicada-mastertul.py /usr/local/bin/cicada-mastertul
+```
 
 
-https://github.com/theblxckcicada/Cicada-Mastertul/assets/68484817/77d0adb5-2223-4ae9-b93a-3d15b4bc8eaa
-
-
-```markdown
 ## Help Menu
-usage: cicada-mastertul.py [-h] [-u USERNAME] [-d DOMAIN] [-p PASSWORD] [-H NTLM_HASH] [-t TARGET] [-w WORDLIST]
-                      [-us USERSFILE] [--kerberos] [--lookupsid] [--npusers] [--userspn] [--ldap]
-                      [--smb] [--full] [--winrm] [--bloodhound] [--crack]
+
+```markdown
+usage: cicada-mastertul.py [-h] [-t TARGET] [-d DOMAIN] [-u USERNAME] [-p PASSWORD] [-H NTLM_HASH]
+                           [-us USERSFILE] [--kerberos] [--lookupsid] [--npusers] [--userspn] [--ldap]
+                           [--smb] [--full] [--winrm] [--bloodhound] [-q]
 
 Script description
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  -u USERNAME, --username USERNAME
-                        Username for authentication
+  -t TARGET, --target TARGET
+                        Target host or IP address
   -d DOMAIN, --domain DOMAIN
                         Domain name of the target machine
+  -u USERNAME, --username USERNAME
+                        Username for authentication
   -p PASSWORD, --password PASSWORD
                         Password for authentication
   -H NTLM_HASH, --ntlm-hash NTLM_HASH
                         NTLM Hash for authentication
-  -t TARGET, --target TARGET
-                        Target host or IP address
-  -w WORDLIST, --wordlist WORDLIST
-                        Password list (default: rockyou.txt)
-  --setup               Fix Impacket scripts
   -us USERSFILE, --usersfile USERSFILE
                         List of domain users
   --kerberos            Enable kerberoasting mode
@@ -49,5 +83,5 @@ optional arguments:
   --full                Enable full mode Enumeration
   --winrm               Enable winrm mode Enumeration
   --bloodhound          Enable bloodhound mode Enumeration
-  --crack               Crack Found Hashes
+  -q, --quiet           Show banner of script
 ```

