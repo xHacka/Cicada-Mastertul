@@ -379,7 +379,7 @@ def enum_smb(username, password, password_hash, ip, domain):
 
         print(f"{ORANGE}[*] Downloading SMB share files to {workspace_smb}{RESET}")
         command = gen_netexec_cmd(username, password, password_hash, ip, domain, "smb", "-M spider_plus -o DOWNLOAD_FLAG=True")
-        server = domain if domain else ip
+        server = ip # domain if domain else ip
 
         output, error = run_command(command)
         if error:
